@@ -359,21 +359,18 @@ TEMPLATES = [
 WSGI_APPLICATION = 'talent_assess.wsgi.application'
 
 # MongoDB Configuration - FIXED VERSION
+from decouple import config
+
 DATABASES = {
     'default': {
         'ENGINE': 'djongo',
         'NAME': config('DB_NAME', default='quizz_db'),
         'ENFORCE_SCHEMA': False,
         'CLIENT': {
-            'host': config('DB_HOST', default='mongodb://localhost:27017/'),  # Changed to full URL
-            'port': config('DB_PORT', default=27017, cast=int),
-            'username': config('DB_USER', default=''),
-            'password': config('DB_PASSWORD', default=''),
-            'authSource': config('DB_AUTH_SOURCE', default='admin'),
+            'host': config('DATABASE_URL')
         }
     }
 }
-
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
     {
