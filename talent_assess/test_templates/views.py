@@ -165,10 +165,12 @@ def test_template_list(request):
                 'message': 'Test template created successfully',
                 'data': response_data
             }, status=status.HTTP_201_CREATED)
-        
+        errors = serializer.errors
+        first_key = list(errors.keys())[0]
+        first_message = errors[first_key][0]
         return Response({
             'success': False,
-            'errors': serializer.errors
+            'message': first_message
         }, status=status.HTTP_400_BAD_REQUEST)
     
     # Add this fallback return (though it should never reach here)
@@ -235,9 +237,12 @@ def test_template_detail(request, pk):
                 'message': 'Test template updated successfully',
                 'data': serializer.data
             })
+        errors = serializer.errors
+        first_key = list(errors.keys())[0]
+        first_message = errors[first_key][0]
         return Response({
             'success': False,
-            'errors': serializer.errors
+            'message': first_message
         }, status=status.HTTP_400_BAD_REQUEST)
     
     elif request.method == 'PATCH':
@@ -249,9 +254,12 @@ def test_template_detail(request, pk):
                 'message': 'Test template updated successfully',
                 'data': serializer.data
             })
+        errors = serializer.errors
+        first_key = list(errors.keys())[0]
+        first_message = errors[first_key][0]
         return Response({
             'success': False,
-            'errors': serializer.errors
+            'message': first_message
         }, status=status.HTTP_400_BAD_REQUEST)
     
     elif request.method == 'DELETE':

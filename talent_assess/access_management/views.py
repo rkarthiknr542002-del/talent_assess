@@ -683,8 +683,10 @@ def safe_get_test(test_identifier):
 #             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+# access_management/views.py - Updated TestAccessGenerateLinksView
+
 class TestAccessGenerateLinksView(APIView):
-    """Admin மட்டும் test links generate பண்ணும்"""
+    """Admin can generate test links for specific candidates"""
     permission_classes = [IsAuthenticated]
     
     def post(self, request):
@@ -697,71 +699,62 @@ class TestAccessGenerateLinksView(APIView):
                     'error': 'Only admin can generate test links'
                 }, status=status.HTTP_403_FORBIDDEN)
             
-            # Get test_template_id from request
+            # Get parameters
             test_template_id = request.data.get('test_template_id')
+            candidate_email = request.data.get('candidate_email')  # NEW: Accept candidate email
+            
             if not test_template_id:
                 return Response({
                     'error': 'test_template_id is required'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            print(f"🔍 Looking for test template with ID: {test_template_id}")
+            # Get test template
+            from tests.models import TestTemplate
+            test_template = None
             
-            # Try to get test template
             try:
-                from tests.models import TestTemplate
-                
-                test_template = None
-                
-                # Try different ways to find the test template
+                from bson import ObjectId
+                test_template = TestTemplate.objects.get(_id=ObjectId(test_template_id))
+            except:
                 try:
                     test_template = TestTemplate.objects.get(id=test_template_id)
                 except:
                     pass
-                
-                if not test_template:
-                    try:
-                        test_template = TestTemplate.objects.get(_id=test_template_id)
-                    except:
-                        pass
-                
-                if not test_template:
-                    try:
-                        from bson import ObjectId
-                        obj_id = ObjectId(test_template_id)
-                        test_template = TestTemplate.objects.get(_id=obj_id)
-                    except:
-                        pass
-                
-                if not test_template:
-                    return Response({
-                        'error': 'Test template not found',
-                        'detail': f'No test template found with ID: {test_template_id}',
-                        'test_template_id': test_template_id
-                    }, status=status.HTTP_404_NOT_FOUND)
-                
-            except Exception as e:
-                print(f"❌ Error fetching test template: {str(e)}")
+            
+            if not test_template:
                 return Response({
                     'error': 'Test template not found',
-                    'detail': str(e),
                     'test_template_id': test_template_id
                 }, status=status.HTTP_404_NOT_FOUND)
             
-            # Get test template ID properly
-            test_template_stored_id = str(test_template._id) if hasattr(test_template, '_id') else str(test_template.id)
-            
-            # Get test template title
-            test_title = getattr(test_template, 'name', None)
-            if not test_title:
-                test_title = f"Test_{test_template_id[:8]}"
-            
-            print(f"📝 Test template: {test_title} (ID: {test_template_stored_id})")
+            test_template_stored_id = str(test_template._id)
+            test_title = getattr(test_template, 'name', f"Test_{test_template_id[:8]}")
             
             # Base URL
-            base_url = request.data.get('base_url', 'http://localhost:8000')
+            base_url = request.data.get('base_url', request.build_absolute_uri('/').rstrip('/'))
             
-            # Generate a single link without participants
-            # Create token payload
+            # Handle participant
+            participant = None
+            if candidate_email:
+                # Try to find or create participant
+                from access_management.models import Participant
+                participant = Participant.objects.filter(email=candidate_email).first()
+                
+                if not participant:
+                    # Create participant with email only (name can be updated later)
+                    participant = Participant.objects.create(
+                        register_no=candidate_email.split('@')[0],  # Use email prefix as register_no
+                        name=candidate_email.split('@')[0],  # Use email prefix as name
+                        email=candidate_email,
+                        mobile='',
+                        department=''
+                    )
+                    print(f"✅ Created new participant for {candidate_email}")
+            
+            # Create token
+            import jwt
+            from datetime import datetime, timedelta
+            
             payload = {
                 "admin_id": str(user.id),
                 "test_template_id": test_template_stored_id,
@@ -770,34 +763,49 @@ class TestAccessGenerateLinksView(APIView):
                 "exp": datetime.utcnow() + timedelta(days=7)
             }
             
+            if participant:
+                payload["participant_id"] = str(participant.id)
+                payload["participant_email"] = participant.email
+            
             token = jwt.encode(payload, settings.SECRET_KEY, algorithm='HS256')
             
-            # Create link
-            invite_link = f"{base_url}/signup?token={token}"
+            # Create TestAccess record
+            from access_management.models import TestAccess
             
-            generated_links = [{
+            test_access = TestAccess.objects.create(
+                test=test_template_stored_id,
+                participant=participant,  # Can be None for public links
+                token=token,
+                is_used=False
+            )
+            
+            # Create link
+            invite_link = f"{base_url}/candidate/instructions?token={token}"
+            
+            links_data = [{
+                'id': str(test_access.id),
                 'token': token,
                 'link': invite_link,
-                # 'test_template_id': test_template_stored_id,
-                # 'test_template_title': test_title
+                'candidate_email': candidate_email if candidate_email else 'General Access',
+                'created_at': test_access.created_at.isoformat() if test_access.created_at else None,
+                'expires_at': (datetime.utcnow() + timedelta(days=7)).isoformat()
             }]
             
             return Response({
                 'success': True,
                 'message': f'Generated link for test template',
                 'test_template_id': test_template_stored_id,
-                # 'test_template_title': test_title,
+                'test_template_title': test_title,
+                'base_url': base_url,
                 'links_generated': 1,
-                'links': generated_links,
-                'base_url': base_url
+                'links': links_data
             }, status=status.HTTP_201_CREATED)
             
         except Exception as e:
-            print(f"❌ Generate test links failed: {str(e)}")
             import traceback
             traceback.print_exc()
             return Response({
-                'error': 'Failed to generate test links',
+                'error': 'Failed to generate test link',
                 'detail': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         

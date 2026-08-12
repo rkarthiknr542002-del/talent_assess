@@ -30,21 +30,31 @@ def create_test_logic(user, data):
         print(f"Validated data: {validated_data}")
         
         template_id = validated_data.get('template_id')
-        experience_level = validated_data.get('experience_level')
+        request_experience_level = validated_data.get('experience_level')  # Store request value
         technologies = validated_data.get('technologies', [])
         num_aptitude = validated_data.get('num_aptitude', 5)
         num_technical = validated_data.get('num_technical', 10)
         duration = 30
         
         template = None
+        experience_level = request_experience_level  # Default to request value
         
+        # ✅ FIX: Use template's experience level if template exists
         if template_id and str(template_id).strip():
             try:
                 template = TestTemplate.objects.get(_id=ObjectId(template_id))
                 duration = getattr(template, 'duration_minutes', 30)
+                
+                # ✅ IMPORTANT: Use template's experience level
+                if template.experience_level:
+                    experience_level = template.experience_level
+                    print(f"✅ Using template's experience level: {experience_level} (from template: {template.name})")
+                else:
+                    print(f"⚠️ Template has no experience level, using request value: {request_experience_level}")
+                    
                 print(f"Using template: {template.name}")
-            except:
-                pass
+            except Exception as e:
+                print(f"Error fetching template: {e}")
         
         print(f"Final config - Level: {experience_level}, Technologies: {technologies}")
         
@@ -153,7 +163,7 @@ def create_test_logic(user, data):
             test = Test.objects.create(
                 candidate=user,
                 template=template,
-                experience_level=experience_level,
+                experience_level=experience_level,  # ✅ Now uses template's level
                 selected_technologies=technologies,
                 aptitude_questions=aptitude_questions,
                 technical_questions=technical_questions,
@@ -167,7 +177,8 @@ def create_test_logic(user, data):
                 passed=False
             )
             
-            print(f"Test created successfully with ID: {test._id}")
+            print(f"✅ Test created successfully with ID: {test._id}")
+            print(f"✅ Test experience_level: {test.experience_level}")
             print(f"Aptitude questions: {len(aptitude_questions)}")
             print(f"Technical questions: {sum(len(q) for q in technical_questions.values())}")
             

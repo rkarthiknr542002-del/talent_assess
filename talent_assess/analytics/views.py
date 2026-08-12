@@ -214,7 +214,6 @@ def analytics_trends(request):
         }
     })
 
-
 @api_view(['GET'])
 @permission_classes([IsAdmin])
 def dashboard_stats(request):
@@ -242,14 +241,19 @@ def dashboard_stats(request):
                 test_id = str(r.test._id)
                 result_by_test[test_id] = r
 
+        # Candidate statistics
         candidates = [u for u in all_users if getattr(u, 'role', '') == 'candidate']
         total_candidates = len(candidates)
         active_candidates = len([u for u in candidates if getattr(u, 'is_active', False)])
 
-        total_tests = len(all_tests)
-        completed_tests = len([t for t in all_tests if getattr(t, 'status', '') == 'completed'])
-        in_progress_tests = len([t for t in all_tests if getattr(t, 'status', '') == 'in_progress'])
-        pending_tests = len([t for t in all_tests if getattr(t, 'status', '') == 'pending'])
+        # Test statistics - FIXED: Only count tests with valid statuses
+        valid_statuses = ['completed', 'in_progress', 'pending']
+        filtered_tests = [t for t in all_tests if getattr(t, 'status', '') in valid_statuses]
+        
+        total_tests = len(filtered_tests)
+        completed_tests = len([t for t in filtered_tests if getattr(t, 'status', '') == 'completed'])
+        in_progress_tests = len([t for t in filtered_tests if getattr(t, 'status', '') == 'in_progress'])
+        pending_tests = len([t for t in filtered_tests if getattr(t, 'status', '') == 'pending'])
 
         # Get valid results for recent data
         valid_results = [r for r in all_results if hasattr(r, 'evaluated_at') and r.evaluated_at]
@@ -268,7 +272,7 @@ def dashboard_stats(request):
 
         # Calculate level distribution from test data directly
         level_distribution = {}
-        completed_tests_list = [t for t in all_tests if getattr(t, 'status', '') == 'completed']
+        completed_tests_list = [t for t in filtered_tests if getattr(t, 'status', '') == 'completed']
         
         for test in completed_tests_list:
             level = getattr(test, 'experience_level', 'unknown')
@@ -277,7 +281,7 @@ def dashboard_stats(request):
             
             level_distribution[level]['total'] += 1
 
-            # ✅ Use test.passed directly if available
+            # Use test.passed directly if available
             if hasattr(test, 'passed') and test.passed:
                 level_distribution[level]['passed'] += 1
             else:
@@ -296,6 +300,7 @@ def dashboard_stats(request):
                     (pass_count / total_count) * 100, 2
                 )
 
+        # Weekly and monthly statistics
         week_tests_taken = sum(getattr(a, 'total_tests_taken', 0) for a in week_analytics)
         week_pass_count = sum(getattr(a, 'pass_count', 0) for a in week_analytics)
 
